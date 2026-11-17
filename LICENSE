@@ -1,0 +1,15 @@
+BASIRA AI — Universal Multimodal Accessibility Intelligence
+Copyright (C) 2025 BASIRA AI contributors
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, version 3.
+
+Third-party model licenses apply to model weights:
+- YOLOv8n: AGPL-3.0 (Ultralytics)
+- MediaPipe hand landmarker: Apache-2.0 (Google)
+- EasyOCR models: Apache-2.0 (JaidedAI)
+- Whisper (faster-whisper): MIT (model weights: OpenAI license)
+- Piper voice ar_JO-kareem: MIT/CC0 (rhasspy)
+
+See MODEL_CARDS.md for details.

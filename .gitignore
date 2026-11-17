@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.test_home/
+models/**/yolov8n.pt
+models/**/*.onnx
+models/**/*.task
+models/**/*.pth
+datasets/**/*.npy
+datasets/**/*.npz
+*.db
+*.db-wal
+*.db-shm
+.env
+dist/
+build/
+*.spec.bak
