@@ -26,20 +26,58 @@ def find_system_libraries(names):
         "/lib",
     ]
     for name in names:
+        chosen = None
         for d in search_dirs:
-            hits = sorted(glob.glob(os.path.join(d, name)))
-            if hits:
-                found.append((os.path.realpath(hits[-1]), "."))
+            exact = os.path.join(d, name)
+            if os.path.exists(exact):
+                chosen = exact
                 break
+        if chosen is None:
+            for d in search_dirs:
+                hits = sorted(glob.glob(os.path.join(d, name + ".*")))
+                if hits:
+                    chosen = hits[0]
+                    break
+        if chosen:
+            found.append((chosen, "."))
     return found
 
 
+def ldd_closure(paths):
+    """Return the transitive shared-library closure of the given files
+    (via ldd), so bundled GL libraries carry their X11/xcb dependencies."""
+    import subprocess
+
+    result = []
+    seen = set()
+    queue = list(paths)
+    while queue:
+        current = queue.pop(0)
+        try:
+            out = subprocess.run(
+                ["ldd", current], capture_output=True, text=True, timeout=30
+            ).stdout
+        except Exception:
+            continue
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[1] == "=>" and "/" in parts[2]:
+                lib = parts[2]
+                if os.path.realpath(lib) in seen:
+                    continue
+                seen.add(os.path.realpath(lib))
+                result.append((lib, "."))
+                queue.append(lib)
+    return result
+
+
 # Qt needs libGL/libEGL at runtime; on minimal systems they live outside
-# site-packages so bundle them when present (users without them install
-# libgl1/libegl1 per docs/INSTALLATION.md).
+# site-packages so bundle them (plus their ldd closure) when present
+# (users without them install libgl1/libegl1 per docs/INSTALLATION.md).
 gl_binaries = find_system_libraries(
-    ["libGL.so.1*", "libGLdispatch.so.0*", "libglx.so.0*", "libEGL.so.1*", "libGLESv2.so.2*"]
+    ["libGL.so.1", "libGLdispatch.so.0", "libGLX.so.0", "libEGL.so.1", "libGLESv2.so.2"]
 )
+gl_binaries += ldd_closure([src for src, _ in gl_binaries])
 
 a = Analysis(
     [str(root / "scripts" / "run_desktop.py")],
