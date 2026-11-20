@@ -32,7 +32,7 @@ sudo apt install -y libgl1 libegl1 libxcb1 libportaudio2 libxkbcommon-x11-0
 python scripts/download_models.py
 
 # 5) تشغيل التطبيق
-python run_desktop.py
+python scripts/run_desktop.py
 ```
 
 ## 3. بناء الملف التنفيذي

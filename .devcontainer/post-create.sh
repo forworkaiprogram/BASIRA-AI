@@ -19,5 +19,5 @@ python -m pytest
 
 echo ""
 echo "BASIRA AI devcontainer ready."
-echo "  Desktop UI : python run_desktop.py  (opens in the noVNC browser tab, port 6080)"
+echo "  Desktop UI : python scripts/run_desktop.py  (opens in the noVNC browser tab, port 6080)"
 echo "  Local API  : python scripts/run_server.py --show-token"

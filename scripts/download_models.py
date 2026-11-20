@@ -99,6 +99,14 @@ def main() -> int:
             YOLO(str(MODELS / "vision" / "yolov8n.pt")).export(
                 format="onnx", imgsz=640, simplify=True)
             print("[ok  ] vision.yolov8n.onnx exported")
+        except ImportError as e:
+            missing = "onnx" if "onnx" in str(e) else "ultralytics"
+            print(f"[FAIL] onnx export: missing module '{missing}'.")
+            print("       Fix:  pip install ultralytics onnx onnxslim")
+            print("       then: python scripts/download_models.py")
+            print("       (note: if Windows Defender blocks pip's AutoUpdate,")
+            print("        install these three packages manually as above)")
+            ok = False
         except Exception as e:
             print(f"[FAIL] onnx export: {e}")
             ok = False
