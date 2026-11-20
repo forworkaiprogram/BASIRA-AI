@@ -57,6 +57,21 @@ def main(argv: list[str] | None = None) -> int:
     splash.finish(window)
     window.show()
     log.info("desktop app started (version %s)", APP_VERSION)
+
+    # Preheat heavy engines in the background so the first analysis does
+    # not wait for model loading (YOLO, Whisper; OCR loads on first use).
+    from ..worker.workers import FunctionWorker, run_in_thread
+
+    def _preheat() -> None:
+        for engine, label in ((core.vision.detector, "vision.detector"),
+                              (core.audio.stt, "audio.stt")):
+            try:
+                engine.load()
+            except Exception as e:  # degraded mode; models page shows it
+                log.warning("preheat %s failed: %s", label, e)
+
+    preheat_thread = run_in_thread(FunctionWorker(_preheat), lambda _r: None)
+
     rc = app.exec()
     from ..worker.workers import wait_for_workers
     wait_for_workers()

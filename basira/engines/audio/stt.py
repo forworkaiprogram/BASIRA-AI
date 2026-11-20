@@ -57,7 +57,8 @@ class SpeechRecognizer(BaseEngine):
         """Transcribe a 16 kHz mono WAV file."""
         if self._model is None:
             self.load()
-        kwargs = {"beam_size": 1, "vad_filter": False}
+        kwargs = {"beam_size": 1, "vad_filter": False,
+                  "condition_on_previous_text": False}
         if language:
             kwargs["language"] = language
         segments, info = self._timed(self._model.transcribe, str(wav_path), **kwargs)

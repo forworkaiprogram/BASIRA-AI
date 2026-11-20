@@ -25,6 +25,7 @@ class HearPage(QWidget):
             core, settings, devices, i18n
         self._audio_buffer: list[np.ndarray] = []
         self._transcribing = False
+        self._empty_notice_shown = False
         self._stt_thread = None
         self._build()
         self._timer = QTimer(self)
@@ -108,8 +109,14 @@ class HearPage(QWidget):
         def on_done(t) -> None:
             self._transcribing = False
             if t is not None and t.is_empty:
+                # One-time notice; cleared when real speech is recognized.
+                if not self._empty_notice_shown:
+                    self._empty_notice_shown = True
+                    self.transcript_view.append(
+                        f"[STT] {self.i18n('no_speech')}")
                 return
             if t is not None:
+                self._empty_notice_shown = False
                 self.transcript_view.append(t.text)
 
         def on_fail(message: str) -> None:

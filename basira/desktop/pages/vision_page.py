@@ -128,12 +128,31 @@ class VisionPage(QWidget):
     def ask(self, question: str) -> None:
         frame = getattr(self, "_last_frame", None)
         if frame is None:
-            self.answer_view.setPlainText(self.i18n("camera_off"))
-            return
+            cam = self.devices._camera
+            if cam is not None and cam.status["running"]:
+                try:
+                    frame = cam.capture_still()
+                except Exception as e:
+                    self.answer_view.setPlainText(
+                        f"{self.i18n('not_available')}: {e}")
+                    return
+            else:
+                self.answer_view.setPlainText(self.i18n("camera_off"))
+                return
+        # Show busy state; first analysis loads the model (seconds).
+        self.analyze_btn.setEnabled(False)
+        self.question_input.setEnabled(False)
+        self.answer_view.setPlainText(self.i18n("analyzing"))
         worker = VisionWorker(self.core.vision, frame.copy(),
                               question or None, self.settings.language)
         self._thread = run_in_thread(worker, self.answerReady.emit,
-                                     lambda e: self.answer_view.setPlainText(e))
+                                     self._on_ask_error)
+
+    def _on_ask_error(self, message: str) -> None:
+        self.analyze_btn.setEnabled(True)
+        self.question_input.setEnabled(True)
+        self.answer_view.setPlainText(message)
+        log.error("vision analysis failed: %s", message)
 
     def _speak_async(self, text: str) -> None:
         """Synthesize+play TTS off the GUI thread (Piper synthesis blocks)."""
@@ -143,6 +162,8 @@ class VisionPage(QWidget):
         self._tts_thread = run_in_thread(worker, lambda _r: None)
 
     def _show_result(self, result) -> None:
+        self.analyze_btn.setEnabled(True)
+        self.question_input.setEnabled(True)
         text = result.answer or result.description
         self.answer_view.setPlainText(text)
         self._last_response = CoreResponse("vision", "describe", text,
