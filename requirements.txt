@@ -9,6 +9,9 @@ scipy>=1.11
 onnxruntime>=1.17
 # training/export only (not needed at runtime):
 #   torch, torchvision, ultralytics, onnx, onnxslim
+# NOTE: 'ultralytics' IS required once to run scripts/download_models.py
+# (it exports yolov8n.pt -> yolov8n.onnx for the runtime detector):
+#   pip install ultralytics
 
 # Vision / OCR
 easyocr>=1.7

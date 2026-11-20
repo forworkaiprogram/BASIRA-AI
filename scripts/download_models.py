@@ -99,6 +99,11 @@ def main() -> int:
             YOLO(str(MODELS / "vision" / "yolov8n.pt")).export(
                 format="onnx", imgsz=640, simplify=True)
             print("[ok  ] vision.yolov8n.onnx exported")
+        except ImportError:
+            print("[FAIL] onnx export: 'ultralytics' is not installed.")
+            print("       Fix:  pip install ultralytics")
+            print("       then: python scripts/download_models.py")
+            ok = False
         except Exception as e:
             print(f"[FAIL] onnx export: {e}")
             ok = False
