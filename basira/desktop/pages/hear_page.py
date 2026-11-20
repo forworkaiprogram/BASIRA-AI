@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from ...config import AppSettings
 from ...hardware.device_manager import DeviceManager
 from ...intelligence.orchestrator import BASIRACore
+from ...worker.workers import FunctionWorker, run_in_thread
 from ..i18n import I18n
 from .common import card
 
@@ -23,6 +24,8 @@ class HearPage(QWidget):
         self.core, self.settings, self.devices, self.i18n = \
             core, settings, devices, i18n
         self._audio_buffer: list[np.ndarray] = []
+        self._transcribing = False
+        self._stt_thread = None
         self._build()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._poll_audio)
@@ -91,20 +94,29 @@ class HearPage(QWidget):
             self._on_alert(res.alert)
 
     def _transcribe_buffer(self) -> None:
-        if not self._audio_buffer:
+        if not self._audio_buffer or self._transcribing:
             return
         pcm = np.concatenate(self._audio_buffer)
         self._audio_buffer.clear()
         if pcm.size < 8000:
             return
-        try:
-            t = self.core.audio.transcribe_pcm(pcm, 16000,
-                                               self.settings.stt_language)
-        except Exception as e:
-            self.transcript_view.append(f"[STT] {e}")
-            return
-        if not t.is_empty:
-            self.transcript_view.append(t.text)
+        # Whisper transcription takes seconds — run it off the GUI thread.
+        self._transcribing = True
+        lang = self.settings.stt_language
+        worker = FunctionWorker(lambda: self.core.audio.transcribe_pcm(pcm, 16000, lang))
+
+        def on_done(t) -> None:
+            self._transcribing = False
+            if t is not None and t.is_empty:
+                return
+            if t is not None:
+                self.transcript_view.append(t.text)
+
+        def on_fail(message: str) -> None:
+            self._transcribing = False
+            self.transcript_view.append(f"[STT] {message}")
+
+        self._stt_thread = run_in_thread(worker, on_done, on_fail)
 
     def _on_alert(self, alert) -> None:
         if alert is None:

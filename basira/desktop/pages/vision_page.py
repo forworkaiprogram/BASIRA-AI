@@ -12,7 +12,7 @@ from ...hardware.device_manager import DeviceManager
 from ...intelligence.orchestrator import BASIRACore, CoreResponse
 from ...logging_setup import get_logger
 from ..i18n import I18n
-from ...worker.workers import VisionWorker, run_in_thread
+from ...worker.workers import CameraOpenerWorker, FunctionWorker, VisionWorker, run_in_thread
 from .common import card, frame_to_pixmap
 
 log = get_logger("desktop.vision")
@@ -27,6 +27,9 @@ class VisionPage(QWidget):
         self.core, self.settings, self.devices, self.i18n = \
             core, settings, devices, i18n
         self._thread: QThread | None = None
+        self._cam_thread: QThread | None = None
+        self._tts_thread: QThread | None = None
+        self._camera_opening = False
         self._last_response: CoreResponse | None = None
         self._build()
         self.answerReady.connect(self._show_result)
@@ -88,11 +91,24 @@ class VisionPage(QWidget):
             self.camera_btn.setText(self.i18n("start_camera"))
             self.preview.setText(self.i18n("camera_off"))
             return
-        try:
-            cam.start()
+        if self._camera_opening:
+            return  # open already in progress
+        self._camera_opening = True
+        self.camera_btn.setEnabled(False)
+        self.preview.setText(self.i18n("camera_starting"))
+        worker = CameraOpenerWorker(cam)
+
+        def on_ok(cam_result) -> None:
+            self._camera_opening = False
+            self.camera_btn.setEnabled(True)
             self.camera_btn.setText(self.i18n("stop_camera"))
-        except Exception as e:
-            self.preview.setText(f"{self.i18n('not_available')}: {e}")
+
+        def on_err(message: str) -> None:
+            self._camera_opening = False
+            self.camera_btn.setEnabled(True)
+            self.preview.setText(f"{self.i18n('not_available')}: {message}")
+
+        self._cam_thread = run_in_thread(worker, on_ok, on_err)
 
     def _update_preview(self) -> None:
         cam = self.devices._camera
@@ -119,17 +135,24 @@ class VisionPage(QWidget):
         self._thread = run_in_thread(worker, self.answerReady.emit,
                                      lambda e: self.answer_view.setPlainText(e))
 
+    def _speak_async(self, text: str) -> None:
+        """Synthesize+play TTS off the GUI thread (Piper synthesis blocks)."""
+        def _work() -> bool:
+            return self.core.speak_text(text, self.devices.speaker())
+        worker = FunctionWorker(_work)
+        self._tts_thread = run_in_thread(worker, lambda _r: None)
+
     def _show_result(self, result) -> None:
         text = result.answer or result.description
         self.answer_view.setPlainText(text)
         self._last_response = CoreResponse("vision", "describe", text,
                                            result.answer_confidence)
         if self.settings.prefer_voice_output and self.settings.tts_enabled:
-            self.core.speak_text(text, self.devices.speaker())
+            self._speak_async(text)
 
     def repeat_answer(self) -> None:
         if self._last_response:
-            self.core.speak_text(self._last_response.text, self.devices.speaker())
+            self._speak_async(self._last_response.text)
 
     def retranslate(self, i18n: I18n) -> None:
         self.i18n = i18n

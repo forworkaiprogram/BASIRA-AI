@@ -186,6 +186,8 @@ class MainWindow(QMainWindow):
     # -- safe close -----------------------------------------------------------------
     def closeEvent(self, event) -> None:
         try:
+            from ..worker.workers import wait_for_workers
+            wait_for_workers()
             self.devices.shutdown()
             self.core.shutdown()
         except Exception as e:

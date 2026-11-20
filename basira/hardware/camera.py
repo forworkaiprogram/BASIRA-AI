@@ -48,18 +48,49 @@ class CameraManager:
         self._latest: Optional[np.ndarray] = None
         self._last_error: str = ""
         self._frame_seq = 0
+        self.state = "idle"  # idle | starting | running | error
 
     # -- discovery ------------------------------------------------------------
+    @staticmethod
+    def _backends() -> list[int]:
+        """OpenCV capture backends appropriate for the current OS.
+        Windows: DirectShow first (fast open, MSMF can take 10s+).
+        macOS: AVFoundation. Linux: V4L2."""
+        import sys as _sys
+        if _sys.platform.startswith("win"):
+            return [b for b in (cv2.CAP_DSHOW, cv2.CAP_MSMF) if b is not None]
+        if _sys.platform == "darwin" and hasattr(cv2, "CAP_AVFOUNDATION"):
+            return [cv2.CAP_AVFOUNDATION]
+        return [cv2.CAP_V4L2 if hasattr(cv2, "CAP_V4L2") else 0]
+
+    @staticmethod
+    def _open_capture(index: int):
+        """Open a VideoCapture with the first working platform backend."""
+        for backend in CameraManager._backends():
+            try:
+                cap = cv2.VideoCapture(index, backend)
+            except Exception:
+                continue
+            if cap is not None and cap.isOpened():
+                return cap
+            try:
+                cap.release()
+            except Exception:
+                pass
+        return None
+
     @staticmethod
     def list_cameras(max_probe: int = 5) -> list[CameraInfo]:
         if cv2 is None:
             return []
         found: list[CameraInfo] = []
         for idx in range(max_probe):
-            cap = cv2.VideoCapture(idx, cv2.CAP_V4L2 if hasattr(cv2, "CAP_V4L2") else 0)
+            cap = CameraManager._open_capture(idx)
+            if cap is None:
+                continue
             ok = False
             try:
-                ok = cap.isOpened() and cap.read()[0]
+                ok = cap.read()[0]
             except Exception:
                 ok = False
             if ok:
@@ -79,23 +110,50 @@ class CameraManager:
         return any(c.index == index for c in cams)
 
     def start(self) -> None:
+        """Open the camera and start the reader thread (blocking open).
+        For UI code use start_async() so the open never blocks the GUI."""
         if self._running.is_set():
             return
         if cv2 is None:
             raise HardwareUnavailableError("OpenCV is not installed")
-        cap = cv2.VideoCapture(self.camera_index)
-        if not cap.isOpened():
-            raise HardwareUnavailableError(
-                f"No camera available at index {self.camera_index}"
-            )
+        self.state = "starting"
+        cap = self._open_capture(self.camera_index)
+        if cap is None:
+            self.state = "error"
+            self._last_error = f"No camera available at index {self.camera_index}"
+            raise HardwareUnavailableError(self._last_error)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         cap.set(cv2.CAP_PROP_FPS, self.fps)
         with self._lock:
             self._cap = cap
         self._running.set()
+        self.state = "running"
         self._thread = threading.Thread(target=self._read_loop, name="basira-camera", daemon=True)
         self._thread.start()
+
+    def start_async(self, on_started=None, on_error=None) -> None:
+        """Open the camera in a background thread (never blocks the caller).
+
+        on_started/on_error run in the opener thread; Qt callers must marshal
+        results to the GUI thread via signals (see desktop worker helpers)."""
+        if self._running.is_set() or getattr(self, "_opening", False):
+            return
+        self._opening = True
+
+        def _work() -> None:
+            try:
+                self.start()
+                self._opening = False
+                if on_started is not None:
+                    on_started()
+            except Exception as e:
+                self._opening = False
+                self._last_error = str(e)
+                if on_error is not None:
+                    on_error(e)
+
+        threading.Thread(target=_work, name="basira-camera-open", daemon=True).start()
 
     def stop(self) -> None:
         self._running.clear()
@@ -111,6 +169,7 @@ class CameraManager:
                 self._cap = None
         with self._lock:
             self._latest = None
+        self.state = "idle"
 
     def _read_loop(self) -> None:
         interval = 1.0 / max(self.fps, 1)
@@ -127,6 +186,7 @@ class CameraManager:
                     self._last_error = "camera stream lost"
                     log.warning("camera stream lost; stopping capture")
                     self._running.clear()
+                    self.state = "error"
                     break
                 time.sleep(0.05)
                 continue
@@ -159,6 +219,7 @@ class CameraManager:
     def status(self) -> dict:
         return {
             "running": self._running.is_set(),
+            "state": self.state,
             "index": self.camera_index,
             "error": self._last_error,
             "frames": self._frame_seq,
