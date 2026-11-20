@@ -10,7 +10,7 @@ from ...config import AppSettings
 from ...hardware.device_manager import DeviceManager
 from ...intelligence.orchestrator import BASIRACore
 from ..i18n import I18n
-from ...worker.workers import SignWorker, run_in_thread
+from ...worker.workers import FunctionWorker, SignWorker, run_in_thread
 from .common import card, frame_to_pixmap
 
 
@@ -100,12 +100,16 @@ class ConnectPage(QWidget):
     def _on_sign_result(self, res) -> None:
         if not res.text:
             return
-        spoken = False
-        if res.confidence >= 0.5 and self.settings.tts_enabled:
-            spoken = self.core.speak_text(res.text, self.devices.speaker())
-        who = "TTS" if spoken else "SIG"
+        use_tts = res.confidence >= 0.5 and self.settings.tts_enabled
+        who = "TTS" if use_tts else "SIG"
         self.transcript_list.addItem(f"{who}: {res.text} ({res.confidence:.0%})")
         self.transcript_list.scrollToBottom()
+        if use_tts:
+            # Piper synthesis blocks — move it off the GUI thread.
+            text = res.text
+            worker = FunctionWorker(lambda: self.core.speak_text(
+                text, self.devices.speaker()))
+            self._tts_thread = run_in_thread(worker, lambda _r: None)
 
     def clear_conversation(self) -> None:
         self.transcript_list.clear()

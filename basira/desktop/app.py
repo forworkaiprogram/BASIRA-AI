@@ -58,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
     log.info("desktop app started (version %s)", APP_VERSION)
     rc = app.exec()
+    from ..worker.workers import wait_for_workers
+    wait_for_workers()
     devices.shutdown()
     core.shutdown()
     return rc

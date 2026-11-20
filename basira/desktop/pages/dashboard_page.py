@@ -11,6 +11,7 @@ from ...hardware.device_manager import DeviceManager
 from ...intelligence.orchestrator import BASIRACore
 from ...config import AppSettings
 from ..i18n import I18n
+from ...worker.workers import ScanWorker, run_in_thread
 from .common import card
 
 
@@ -87,17 +88,32 @@ class DashboardPage(QWidget):
                 window.sidebar.setCurrentRow(mapping[mode])
 
     def refresh(self) -> None:
-        report = self.devices.scan()
-        self.camera_status.setText(
-            f"{len(report.cameras)} {self.i18n('available')}"
-            if report.cameras else self.i18n("no_devices"))
-        self.mic_status.setText(
-            f"{len(report.microphones)} {self.i18n('available')}"
-            if report.microphones else self.i18n("no_devices"))
-        lines = []
+        # Device scan probes camera indices (slow on Windows) — run it off
+        # the GUI thread and update the labels when the report arrives.
+        if getattr(self, "_scanning", False):
+            return
+        self._scanning = True
+        self.camera_status.setText(self.i18n("scanning_devices"))
+        worker = ScanWorker(self.devices)
+
+        def on_report(report) -> None:
+            self._scanning = False
+            self.camera_status.setText(
+                f"{len(report.cameras)} {self.i18n('available')}"
+                if report.cameras else self.i18n("no_devices"))
+            self.mic_status.setText(
+                f"{len(report.microphones)} {self.i18n('available')}"
+                if report.microphones else self.i18n("no_devices"))
+
+        def on_scan_error(_msg: str) -> None:
+            self._scanning = False
+            self.camera_status.setText(self.i18n("no_devices"))
+
+        engine_lines = []
         for st in self.core.registry.all_status():
-            lines.append(f"{st.name}: {st.state.value}")
-        self.engine_status.setText("\n".join(lines) or "—")
+            engine_lines.append(f"{st.name}: {st.state.value}")
+        self.engine_status.setText("\n".join(engine_lines) or "—")
+        self._scan_thread = run_in_thread(worker, on_report, on_scan_error)
 
     def retranslate(self, i18n: I18n) -> None:
         self.i18n = i18n
