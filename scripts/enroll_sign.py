@@ -12,6 +12,11 @@ import time
 import cv2
 import numpy as np
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from basira.config import models_dir
 from basira.engines.sign.dataset_tools import SignDatasetWriter
 from basira.engines.sign.hand_tracker import HandTracker

@@ -8,6 +8,12 @@ generated on first run and stored in the local database. Print it with:
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
+
+# Allow running from any working directory: ensure the project root
+# (parent of scripts/) is importable.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from basira.config import database_path, load_settings
 from basira.db.database import Database
